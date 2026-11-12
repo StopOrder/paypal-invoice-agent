@@ -4,6 +4,8 @@
 
 Small sellers take orders in chat: a text message, an email, a photo of a handwritten quote. Turning that into a proper invoice means retyping every line. PasteBill reads the message with AI, shows you an editable draft, and sends it through PayPal with a pay link.
 
+**Live demo: https://pastebill.vercel.app** (PayPal sandbox, no real money)
+
 Built for the [PayPal AI Hackathon](https://paypalaihackathon.devpost.com/).
 
 ## How it works
