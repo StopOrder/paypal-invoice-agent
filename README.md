@@ -1,36 +1,88 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# PasteBill
 
-## Getting Started
+**Paste an order. Send a PayPal invoice.**
 
-First, run the development server:
+Small sellers take orders in chat: a text message, an email, a photo of a handwritten quote. Turning that into a proper invoice means retyping every line. PasteBill reads the message with AI, shows you an editable draft, and sends it through PayPal with a pay link.
+
+Built for the [PayPal AI Hackathon](https://paypalaihackathon.devpost.com/).
+
+## How it works
+
+1. **Paste** a customer message, or add a photo of a quote.
+2. **Review** the draft the AI extracted: customer, line items, quantities, unit prices, note. Everything is editable, and the total updates as you type.
+3. **Send.** PasteBill creates the invoice in PayPal, sends it to the customer, and shows the pay link. The status flips to *Paid* by itself once the customer pays.
+
+Nothing is sent without a human check: the AI only drafts, and the send button stays locked until there is a valid email and a total above zero.
+
+## Tools used
+
+| Tool | What it does here |
+| --- | --- |
+| **PayPal Invoicing API v2** (sandbox) | Generates the invoice number, creates the draft invoice, sends it to the customer, and reports payment status. OAuth 2.0 client-credentials for auth. |
+| **Google Gemini** (`gemini-2.5-flash` by default) | Reads the pasted text or photo and returns the invoice draft as JSON, constrained by a response schema. Handles non-English messages and romanizes names. |
+| **Next.js 16 + React 19 + Tailwind CSS 4** | UI and server routes. API keys stay on the server. |
+| **Zod** | Validates the AI's output and every request before anything reaches PayPal. |
+| **Vitest** | Unit tests. |
+
+## Run it locally
+
+Requires Node.js 20+.
 
 ```bash
+git clone https://github.com/StopOrder/paypal-invoice-agent.git
+cd paypal-invoice-agent
+npm install
+cp .env.example .env.local
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open http://localhost:3000.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Configure `.env.local`
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Variable | Where to get it |
+| --- | --- |
+| `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET` | [developer.paypal.com](https://developer.paypal.com/) → Apps & Credentials → **Sandbox** |
+| `GEMINI_API_KEY` | [aistudio.google.com](https://aistudio.google.com/) → Get API key |
+| `MOCK_AI` | `1` skips the AI and returns a sample draft. Set to `0` to use Gemini. |
 
-## Learn More
+Without any keys the app still runs: the three built-in examples load saved AI results, so you can walk through the review screen. Sending an invoice needs the PayPal sandbox keys.
 
-To learn more about Next.js, take a look at the following resources:
+### Pay a test invoice
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+After sending, open the pay link and log in with a **sandbox Personal (buyer) account** from developer.paypal.com → Testing Tools → Sandbox Accounts. No real money moves.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Tests
 
-## Deploy on Vercel
+```bash
+npm test
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Covers draft validation and totals, the draft-to-PayPal mapping, the PayPal call sequence (with `fetch` stubbed), Gemini request/response handling, and the rate limiter.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Project layout
+
+```
+app/
+  page.tsx                  landing page
+  api/extract/route.ts      POST  text/photo -> invoice draft (Gemini)
+  api/invoices/route.ts     POST  draft -> PayPal invoice, sent
+  api/invoices/[id]/route.ts GET  invoice status
+components/                 Paste -> Review -> Sent steps
+lib/
+  schema.ts                 InvoiceDraft type, validation, totals
+  extract.ts                Gemini call + response parsing
+  paypal.ts                 OAuth, mapping, create/send/status
+  ratelimit.ts              daily caps that protect the free AI quota
+  examples.ts               sample orders with saved drafts
+```
+
+## Limits
+
+- Sandbox only, USD only.
+- Rate limits are in-memory, so on serverless hosting they are approximate.
+- The AI can misread a message. That is why the review step exists.
+
+## License
+
+[MIT](LICENSE)
