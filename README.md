@@ -49,6 +49,10 @@ Open http://localhost:3000.
 
 Without any keys the app still runs: the three built-in examples load saved AI results, so you can walk through the review screen. Sending an invoice needs the PayPal sandbox keys.
 
+### Try the photo path
+
+[`public/sample-quote.jpg`](public/sample-quote.jpg) is a sample quote you can upload with **Add a photo of a quote**.
+
 ### Pay a test invoice
 
 After sending, open the pay link and log in with a **sandbox Personal (buyer) account** from developer.paypal.com → Testing Tools → Sandbox Accounts. No real money moves.
