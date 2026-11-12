@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import type { InvoiceStatus } from "@/lib/paypal";
 
-type Props = { initial: InvoiceStatus; email: string; onNew: () => void };
+type Props = { initial: InvoiceStatus; onNew: () => void };
 
 const LABEL: Record<string, { text: string; tone: string }> = {
   SENT: { text: "Sent — waiting for payment", tone: "bg-amber-50 text-amber-900 border-amber-200" },
@@ -14,7 +14,7 @@ const LABEL: Record<string, { text: string; tone: string }> = {
   CANCELLED: { text: "Cancelled", tone: "bg-gray-50 text-gray-700 border-gray-200" },
 };
 
-export function SentStep({ initial, email, onNew }: Props) {
+export function SentStep({ initial, onNew }: Props) {
   const [invoice, setInvoice] = useState(initial);
   const [checking, setChecking] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -45,7 +45,7 @@ export function SentStep({ initial, email, onNew }: Props) {
       <div className={`rounded-xl border px-4 py-3 ${label.tone}`} role="status">
         <p className="text-sm font-semibold">{label.text}</p>
         <p className="mt-0.5 text-sm">
-          Invoice {invoice.invoiceNumber && `#${invoice.invoiceNumber} `}for ${invoice.amount} went to {email}.
+          Invoice {invoice.invoiceNumber && `#${invoice.invoiceNumber} `}for ${invoice.amount} went to {invoice.email || "the customer"}.
         </p>
       </div>
 

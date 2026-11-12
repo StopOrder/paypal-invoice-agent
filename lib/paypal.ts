@@ -85,6 +85,7 @@ type PayPalInvoice = {
   status: string;
   detail?: { invoice_number?: string; metadata?: { recipient_view_url?: string } };
   amount?: { value?: string; currency_code?: string };
+  primary_recipients?: { billing_info?: { email_address?: string } }[];
 };
 
 export type InvoiceStatus = {
@@ -93,6 +94,7 @@ export type InvoiceStatus = {
   invoiceNumber: string;
   payUrl: string;
   amount: string;
+  email: string;
 };
 
 function summarize(inv: PayPalInvoice): InvoiceStatus {
@@ -102,6 +104,7 @@ function summarize(inv: PayPalInvoice): InvoiceStatus {
     invoiceNumber: inv.detail?.invoice_number ?? "",
     payUrl: inv.detail?.metadata?.recipient_view_url ?? "",
     amount: inv.amount?.value ?? "",
+    email: inv.primary_recipients?.[0]?.billing_info?.email_address ?? "",
   };
 }
 

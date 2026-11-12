@@ -58,6 +58,7 @@ describe("PayPal calls", () => {
             status: "SENT",
             detail: { invoice_number: "0042", metadata: { recipient_view_url: "https://pay/x" } },
             amount: { value: "509.70" },
+            primary_recipients: [{ billing_info: { email_address: "dana@example.com" } }],
           });
         if (path === "/v2/invoicing/invoices/BAD") return reply({ message: "Not found" }, 404);
         return reply({}, 500);
@@ -82,6 +83,7 @@ describe("PayPal calls", () => {
       invoiceNumber: "0042",
       payUrl: "https://pay/x",
       amount: "509.70",
+      email: "dana@example.com",
     });
   });
 

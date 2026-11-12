@@ -9,7 +9,7 @@ type Props = {
   source: "ai" | "example" | "manual" | "mock";
   original?: string;
   onBack: () => void;
-  onSent: (invoice: InvoiceStatus, email: string) => void;
+  onSent: (invoice: InvoiceStatus) => void;
 };
 
 const SOURCE_NOTE: Record<Props["source"], string> = {
@@ -46,7 +46,7 @@ export function ReviewStep({ initial, source, original, onBack, onSent }: Props)
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Couldn't send the invoice.");
-      onSent(json, draft.customer.email);
+      onSent(json);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't send the invoice.");
     } finally {

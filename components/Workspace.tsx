@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { EXAMPLES } from "@/lib/examples";
 import type { InvoiceDraft } from "@/lib/schema";
 import type { InvoiceStatus } from "@/lib/paypal";
@@ -11,12 +11,29 @@ import { SentStep } from "./SentStep";
 type Stage =
   | { name: "input" }
   | { name: "review"; draft: InvoiceDraft; source: "ai" | "example" | "manual" | "mock"; original?: string }
-  | { name: "sent"; invoice: InvoiceStatus; email: string };
+  | { name: "sent"; invoice: InvoiceStatus };
 
 const STEPS = ["Paste", "Review", "Sent"];
 
 export function Workspace() {
   const [stage, setStage] = useState<Stage>({ name: "input" });
+
+  // A sent invoice lives in the URL, so the status page survives a reload and can be bookmarked.
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("invoice");
+    if (!id) return;
+    fetch(`/api/invoices/${encodeURIComponent(id)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((invoice: InvoiceStatus | null) => invoice && setStage({ name: "sent", invoice }))
+      .catch(() => {});
+  }, []);
+
+  function go(next: Stage) {
+    const url = next.name === "sent" ? `?invoice=${next.invoice.id}` : window.location.pathname;
+    window.history.replaceState(null, "", url);
+    setStage(next);
+  }
+
   const index = stage.name === "input" ? 0 : stage.name === "review" ? 1 : 2;
 
   return (
@@ -41,7 +58,7 @@ export function Workspace() {
         {stage.name === "input" && (
           <InputStep
             examples={EXAMPLES}
-            onDraft={(draft, source, original) => setStage({ name: "review", draft, source, original })}
+            onDraft={(draft, source, original) => go({ name: "review", draft, source, original })}
           />
         )}
         {stage.name === "review" && (
@@ -49,12 +66,12 @@ export function Workspace() {
             initial={stage.draft}
             source={stage.source}
             original={stage.original}
-            onBack={() => setStage({ name: "input" })}
-            onSent={(invoice, email) => setStage({ name: "sent", invoice, email })}
+            onBack={() => go({ name: "input" })}
+            onSent={(invoice) => go({ name: "sent", invoice })}
           />
         )}
         {stage.name === "sent" && (
-          <SentStep initial={stage.invoice} email={stage.email} onNew={() => setStage({ name: "input" })} />
+          <SentStep key={stage.invoice.id} initial={stage.invoice} onNew={() => go({ name: "input" })} />
         )}
       </section>
     </div>
