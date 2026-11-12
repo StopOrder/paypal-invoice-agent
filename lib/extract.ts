@@ -18,6 +18,9 @@ Rules:
 - If prices are in another currency, keep the numbers as written and say so in note.
 - note: one short English sentence with useful context (deadline, address, occasion). "" if none.`;
 
+const JSON_SHAPE = `Reply with one JSON object and nothing else, in exactly this shape:
+{"customer":{"name":string,"email":string},"items":[{"name":string,"quantity":number,"unitPrice":number}],"note":string}`;
+
 const RESPONSE_SCHEMA = {
   type: "OBJECT",
   properties: {
@@ -73,24 +76,93 @@ export function parseGeminiResponse(json: unknown): InvoiceDraft {
   }
 }
 
+/** Build an OpenAI-compatible chat-completions body (bizrouter, DeepSeek, OpenAI…). Exported for tests. */
+export function buildChatRequest(input: ExtractInput, model: string) {
+  const content: unknown[] = [];
+  if (input.text?.trim()) content.push({ type: "text", text: input.text.trim().slice(0, 8000) });
+  if (input.image)
+    content.push({
+      type: "image_url",
+      image_url: { url: `data:${input.image.mimeType};base64,${input.image.base64}` },
+    });
+  if (content.length === 0) throw new ExtractError("Paste a message or add a photo first.");
+  return {
+    model,
+    temperature: 0,
+    max_tokens: 4000,
+    response_format: { type: "json_object" },
+    messages: [
+      { role: "system", content: `${SYSTEM}\n\n${JSON_SHAPE}` },
+      { role: "user", content },
+    ],
+  };
+}
+
+/** Parse an OpenAI-compatible response into a validated draft. Exported for tests. */
+export function parseChatResponse(json: unknown): InvoiceDraft {
+  const raw = (json as { choices?: { message?: { content?: string } }[] })?.choices?.[0]?.message?.content;
+  if (!raw) throw new ExtractError("The AI returned an empty answer.");
+  const text = raw.replace(/^\s*```(?:json)?/i, "").replace(/```\s*$/, "").trim();
+  try {
+    return parseDraft(JSON.parse(text));
+  } catch {
+    throw new ExtractError("Couldn't find any billable items in that. Try adding prices and quantities.");
+  }
+}
+
+type Provider =
+  | { kind: "chat"; baseUrl: string; apiKey: string; model: string }
+  | { kind: "gemini"; apiKey: string; model: string };
+
+/** An OpenAI-compatible endpoint wins when configured; otherwise Gemini; otherwise mock. */
+export function provider(): Provider | null {
+  if (process.env.MOCK_AI === "1") return null;
+  const { AI_BASE_URL, AI_API_KEY, AI_MODEL, GEMINI_API_KEY, GEMINI_MODEL } = process.env;
+  if (AI_BASE_URL && AI_API_KEY && AI_MODEL)
+    return { kind: "chat", baseUrl: AI_BASE_URL.replace(/\/$/, ""), apiKey: AI_API_KEY, model: AI_MODEL };
+  if (GEMINI_API_KEY) return { kind: "gemini", apiKey: GEMINI_API_KEY, model: GEMINI_MODEL ?? "gemini-3.8-flash" };
+  return null;
+}
+
 export function isMock(): boolean {
-  return process.env.MOCK_AI === "1" || !process.env.GEMINI_API_KEY;
+  return provider() === null;
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** POST JSON, retrying once when the provider is briefly overloaded. */
+async function post(url: string, headers: Record<string, string>, body: unknown): Promise<unknown> {
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...headers },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(45_000),
+    });
+    if (res.ok) return res.json();
+    if (res.status === 429) throw new ExtractError("The AI is out of quota right now. Try an example instead.");
+    if (res.status === 503 && attempt === 0) {
+      await sleep(1500);
+      continue;
+    }
+    throw new ExtractError(`AI request failed (${res.status}).`);
+  }
 }
 
 export async function extractDraft(input: ExtractInput): Promise<{ draft: InvoiceDraft; mock: boolean }> {
-  const body = buildGeminiRequest(input);
-  if (isMock()) return { draft: EXAMPLES[0].draft, mock: true };
-
-  const model = process.env.GEMINI_MODEL ?? "gemini-2.5-flash";
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-goog-api-key": process.env.GEMINI_API_KEY! },
-      body: JSON.stringify(body),
-    },
+  const p = provider();
+  if (!p) {
+    buildGeminiRequest(input); // still validates that there is something to read
+    return { draft: EXAMPLES[0].draft, mock: true };
+  }
+  if (p.kind === "chat") {
+    const json = await post(`${p.baseUrl}/chat/completions`, { Authorization: `Bearer ${p.apiKey}` }, buildChatRequest(input, p.model));
+    return { draft: parseChatResponse(json), mock: false };
+  }
+  const json = await post(
+    `https://generativelanguage.googleapis.com/v1beta/models/${p.model}:generateContent`,
+    { "x-goog-api-key": p.apiKey },
+    buildGeminiRequest(input),
   );
-  if (res.status === 429) throw new ExtractError("The AI is out of free quota right now. Try an example instead.");
-  if (!res.ok) throw new ExtractError(`AI request failed (${res.status}).`);
-  return { draft: parseGeminiResponse(await res.json()), mock: false };
+  return { draft: parseGeminiResponse(json), mock: false };
 }
